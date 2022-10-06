@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 
 	//create window:
 	SDL_Window *window = SDL_CreateWindow(
-		"gp22 game5: Tony Pigeon's Amateur Skater 466",
+		"gp22 game5: Tony Pigeon's Amateur Skater 466 (dshernan)",
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 		1280, 720, //TODO: modify window size if you'd like
 		SDL_WINDOW_OPENGL
