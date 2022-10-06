@@ -4,6 +4,7 @@
 
 #include "DrawLines.hpp"
 #include "Mesh.hpp"
+#include "Sound.hpp"
 #include "Load.hpp"
 #include "gl_errors.hpp"
 #include "data_path.hpp"
@@ -12,6 +13,10 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include <random>
+
+Load< Sound::Sample > skate_sounds_sample(LoadTagDefault, []() -> Sound::Sample const * {
+	return new Sound::Sample(data_path("skate_sounds.wav"));
+});
 
 GLuint skatepark_meshes_for_lit_color_texture_program = 0;
 Load< MeshBuffer > skatepark_meshes(LoadTagDefault, []() -> MeshBuffer const * {
@@ -48,6 +53,21 @@ PlayMode::PlayMode() : scene(*skatepark_scene) {
 	//create a player transform:
 	scene.transforms.emplace_back();
 	player.transform = &scene.transforms.back();
+	// make a skateboard transform that is a child of the player root:
+	scene.transforms.emplace_back();
+	player.skateboard = &scene.transforms.back();
+	player.skateboard->parent = player.transform;
+	// give the skateboard the skateboard mesh
+	Mesh const &player_mesh = skatepark_meshes->lookup("Skateboard");
+	scene.drawables.emplace_back(player.skateboard);
+	Scene::Drawable &drawable = scene.drawables.back();
+	drawable.pipeline = lit_color_texture_program_pipeline;
+	drawable.pipeline.vao = skatepark_meshes_for_lit_color_texture_program;
+	drawable.pipeline.type = player_mesh.type;
+	drawable.pipeline.start = player_mesh.start;
+	drawable.pipeline.count = player_mesh.count;
+
+	// player start point
 	player.transform->position = glm::vec3(-7.0f, 30.0f, 0.0f);
 
 	//create a player camera attached to a child of the player transform:
@@ -58,15 +78,21 @@ PlayMode::PlayMode() : scene(*skatepark_scene) {
 	player.camera->near = 0.01f;
 	player.camera->transform->parent = player.transform;
 
-	//player's eyes are 1.8 units above the ground:
-	player.camera->transform->position = glm::vec3(0.0f, 0.0f, 5.0f);
+	//camera is elevated, looking top-down
+	player.camera_height = 16.0f;
+	player.camera->transform->position = glm::vec3(0.0f, -8.0f, player.camera_height);
+
+	// skateboard is slightly above the ground so it doesn't clip
+	player.skateboard->position = glm::vec3(0.0f, 0.0f, 1.0f);
+	// player.transform->rotation = glm::angleAxis(glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
 	//rotate camera facing direction (-z) to player facing direction (+y):
-	player.camera->transform->rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	player.camera->transform->rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.2f, 0.0f, 0.0f));
 
 	//start player walking at nearest walk point:
 	player.at = walkmesh->nearest_walk_point(player.transform->position);
 
+	Sound::loop(*skate_sounds_sample);
 }
 
 PlayMode::~PlayMode() {
@@ -121,14 +147,15 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				-evt.motion.yrel / float(window_size.y)
 			);
 			glm::vec3 upDir = walkmesh->to_world_smooth_normal(player.at);
-			player.transform->rotation = glm::angleAxis(-motion.x * player.camera->fovy, upDir) * player.transform->rotation;
+			player.skateboard->rotation = glm::angleAxis(-motion.x * player.camera->fovy, upDir) * player.skateboard->rotation;
+			// player.camera->transform->rotation = glm::angleAxis(-motion.x * player.camera->fovy, upDir) * player.camera->transform->rotation;
 
-			float pitch = glm::pitch(player.camera->transform->rotation);
-			pitch += motion.y * player.camera->fovy;
+			// float pitch = glm::pitch(player.camera->transform->rotation);
+			// pitch += motion.y * player.camera->fovy;
 			//camera looks down -z (basically at the player's feet) when pitch is at zero.
-			pitch = std::min(pitch, 0.95f * 3.1415926f);
-			pitch = std::max(pitch, 0.05f * 3.1415926f);
-			player.camera->transform->rotation = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+			// pitch = std::min(pitch, 0.95f * 3.1415926f);
+			// pitch = std::max(pitch, 0.05f * 3.1415926f);
+			// player.camera->transform->rotation = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
 
 			return true;
 		}
@@ -152,7 +179,7 @@ void PlayMode::update(float elapsed) {
 		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
 
 		//get move in world coordinate system:
-		glm::vec3 remain = player.transform->make_local_to_world() * glm::vec4(move.x, move.y, 0.0f, 0.0f);
+		glm::vec3 remain = player.skateboard->make_local_to_world() * glm::vec4(move.x, move.y, 0.0f, 0.0f);
 
 		//using a for() instead of a while() here so that if walkpoint gets stuck in
 		// some awkward case, code will not infinite loop:
@@ -207,10 +234,11 @@ void PlayMode::update(float elapsed) {
 		{ //update player's rotation to respect local (smooth) up-vector:
 			
 			glm::quat adjust = glm::rotation(
-				player.transform->rotation * glm::vec3(0.0f, 0.0f, 1.0f), //current up vector
+				player.skateboard->rotation * glm::vec3(0.0f, 0.0f, 1.0f), //current up vector
 				walkmesh->to_world_smooth_normal(player.at) //smoothed up vector at walk location
 			);
-			player.transform->rotation = glm::normalize(adjust * player.transform->rotation);
+			player.skateboard->rotation = glm::normalize(adjust * player.skateboard->rotation);
+			// player.camera->transform->rotation = glm::normalize(adjust * player.camera->transform->rotation);
 		}
 
 		/*
@@ -218,9 +246,14 @@ void PlayMode::update(float elapsed) {
 		glm::vec3 right = frame[0];
 		//glm::vec3 up = frame[1];
 		glm::vec3 forward = -frame[2];
-
-		camera->transform->position += move.x * right + move.y * forward;
 		*/
+
+		// glm::vec3 camera_world = player.camera->transform->make_local_to_world() * player.camera->transform->position;
+		// glm::vec3 camera_pos = 
+		// player.camera->transform->position = glm::vec3(0.0f, 0.0f,
+		// 	(player.camera->transform->make_world_to_local() * 
+		// 	glm::vec4(0.0f, 0.0f, player.camera_height, 0.0f)).z);
+		player.camera->transform->position.z = player.camera_height - player.transform->position.z;
 	}
 
 	//reset button press counters:
@@ -238,7 +271,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	// TODO: consider using the Light(s) in the scene to do this
 	glUseProgram(lit_color_texture_program->program);
 	glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
-	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
+	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, -0.9486832f,-0.9486832f)));
 	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
 	glUseProgram(0);
 

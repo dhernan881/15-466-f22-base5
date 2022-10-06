@@ -35,5 +35,9 @@ struct PlayMode : Mode {
 		Scene::Transform *transform = nullptr;
 		//camera is at player's head and will be pitched by mouse up/down motion:
 		Scene::Camera *camera = nullptr;
+		float camera_height = 4.0f;
+		// transform for the skateboard mesh, should be slightly elevated
+		// so it doesn't clip through the ground
+		Scene::Transform *skateboard = nullptr;
 	} player;
 };
