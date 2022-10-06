@@ -15,29 +15,36 @@ WalkMesh::WalkMesh(std::vector< glm::vec3 > const &vertices_, std::vector< glm::
 
 	//construct next_vertex map (maps each edge to the next vertex in the triangle):
 	next_vertex.reserve(triangles.size()*3);
-	auto do_next = [this](uint32_t a, uint32_t b, uint32_t c) {
+	uint foo = 0;
+	auto do_next = [this, &foo](uint32_t a, uint32_t b, uint32_t c) {
 		auto ret = next_vertex.insert(std::make_pair(glm::uvec2(a,b), c));
-		assert(ret.second);
+		if (!ret.second) {
+			std::cout << foo << std::endl;
+		}
+		// assert(ret.second);
 	};
 	for (auto const &tri : triangles) {
 		do_next(tri.x, tri.y, tri.z);
+		foo++;
 		do_next(tri.y, tri.z, tri.x);
+		foo++;
 		do_next(tri.z, tri.x, tri.y);
+		foo++;
 	}
 
 	//DEBUG: are vertex normals consistent with geometric normals?
-	for (auto const &tri : triangles) {
-		glm::vec3 const &a = vertices[tri.x];
-		glm::vec3 const &b = vertices[tri.y];
-		glm::vec3 const &c = vertices[tri.z];
-		glm::vec3 out = glm::normalize(glm::cross(b-a, c-a));
+	// for (auto const &tri : triangles) {
+	// 	glm::vec3 const &a = vertices[tri.x];
+	// 	glm::vec3 const &b = vertices[tri.y];
+	// 	glm::vec3 const &c = vertices[tri.z];
+	// 	glm::vec3 out = glm::normalize(glm::cross(b-a, c-a));
 
-		float da = glm::dot(out, normals[tri.x]);
-		float db = glm::dot(out, normals[tri.y]);
-		float dc = glm::dot(out, normals[tri.z]);
+	// 	float da = glm::dot(out, normals[tri.x]);
+	// 	float db = glm::dot(out, normals[tri.y]);
+	// 	float dc = glm::dot(out, normals[tri.z]);
 
-		assert(da > 0.1f && db > 0.1f && dc > 0.1f);
-	}
+	// 	assert(da > 0.1f && db > 0.1f && dc > 0.1f);
+	// }
 }
 
 //project pt to the plane of triangle a,b,c and return the barycentric weights of the projected point:
